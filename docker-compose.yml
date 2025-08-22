@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  aave-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aave-mcp
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - LOG_LEVEL=info
+      - RPC_URL=${RPC_URL:-https://base-rpc.publicnode.com}
+      - CHAIN_ID=${CHAIN_ID:-8453}
+      - AUTO_EXECUTE=${AUTO_EXECUTE:-false}
+      # Optional: Add private key for auto-execution (use secrets in production!)
+      # - PRIVATE_KEY=${PRIVATE_KEY}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - aave-network
+    volumes:
+      # Optional: Mount logs directory
+      - ./logs:/app/logs:rw
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Add monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aave-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - aave-network
+    profiles:
+      - monitoring
+
+  # Optional: Add Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aave-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - aave-network
+    profiles:
+      - monitoring
+
+networks:
+  aave-network:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
